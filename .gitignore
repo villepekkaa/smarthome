@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+telemetry.db
+*.db
+.env
+.env.*
+*.log
+telemetry.db
+*.db
+.venv/
+.env
+.env.*
+__pycache__/
+*.pyc
