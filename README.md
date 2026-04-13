@@ -17,7 +17,9 @@ This project is intentionally lightweight and local-first.
 
 ## Requirements
 
-- Linux (tested on CachyOS / Arch-based distros)
+- Linux: tested (CachyOS/Arch-like)
+- Windows: supported (BLE + MQTT setup required)
+- macOS: likely works with the same Python stack
 - Python 3.11+
 - Bluetooth adapter
 - Mosquitto MQTT broker
