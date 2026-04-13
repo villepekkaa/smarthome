@@ -17,12 +17,18 @@ This project is intentionally lightweight and local-first.
 
 ## Requirements
 
+- Python 3.10+ (3.11+ recommended)
+- Bluetooth adapter (BLE-capable)
+- MQTT broker (Mosquitto or equivalent)
+- Python packages:
+  - `bleak`
+  - `paho-mqtt`
+  - `python-dotenv`
+
+### OS support
 - Linux: tested (CachyOS/Arch-like)
 - Windows: supported (BLE + MQTT setup required)
 - macOS: likely works with the same Python stack
-- Python 3.11+
-- Bluetooth adapter
-- Mosquitto MQTT broker
 
 ---
 
