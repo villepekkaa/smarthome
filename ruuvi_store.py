@@ -1,10 +1,16 @@
 import json
+import os
 import sqlite3
 from datetime import datetime
 import paho.mqtt.client as mqtt
+from dotenv import load_dotenv
 
-DB_PATH = "telemetry.db"
-TOPIC = "home/ruuvi/+/telemetry"
+load_dotenv()
+
+DB_PATH = os.getenv("DB_PATH", "telemetry.db")
+MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+TOPIC = os.getenv("MQTT_TOPIC", "home/ruuvi/+/telemetry")
 
 schema_sql = """
 CREATE TABLE IF NOT EXISTS telemetry (
@@ -64,5 +70,5 @@ def on_message(client, userdata, msg):
 client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.on_connect = on_connect
 client.on_message = on_message
-client.connect("localhost", 1883, 60)
+client.connect(MQTT_HOST, MQTT_PORT, 60)
 client.loop_forever()

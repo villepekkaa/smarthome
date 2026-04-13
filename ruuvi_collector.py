@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import signal
 import time
 from dataclasses import dataclass
@@ -7,14 +8,21 @@ from typing import Optional
 
 from bleak import BleakScanner
 import paho.mqtt.client as mqtt
+from dotenv import load_dotenv
 
-MQTT_HOST = "localhost"
-MQTT_PORT = 1883
-MQTT_TOPIC_PREFIX = "home/ruuvi"
+load_dotenv()
 
+MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_TOPIC_PREFIX = os.getenv("MQTT_TOPIC_PREFIX", "home/ruuvi")
+
+# Comma-separated MAC list in .env
+# Example: ALLOWED_MACS=EA:10:CF:D3:59:AD,C7:EB:D8:F6:F0:19
+_allowed_macs_raw = os.getenv("ALLOWED_MACS", "")
 ALLOWED_MACS = {
-    "EA:10:CF:D3:59:AD",
-    "C7:EB:D8:F6:F0:19",
+    mac.strip().upper()
+    for mac in _allowed_macs_raw.split(",")
+    if mac.strip()
 }
 
 # Ruuvi manufacturer ID (little-endian bytes in BLE payload often appear as 0x0499)
@@ -107,7 +115,9 @@ async def main():
 
     def detection_callback(device, advertisement_data):
         mac = (device.address or "").upper()
-        if mac not in ALLOWED_MACS:
+        
+        # If allowlist is provided, enforce it. If empty, allow all.
+        if ALLOWED_MACS and mac not in ALLOWED_MACS:
             return
 
         mfg = advertisement_data.manufacturer_data or {}
