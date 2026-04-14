@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SmartHome Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f7f7f8; color: #222; }
+    h1 { margin-bottom: 8px; }
+    .muted { color: #666; margin-bottom: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    .card { background: white; border-radius: 10px; padding: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .sensor-title { font-weight: 700; margin-bottom: 6px; }
+    .kv { font-size: 14px; margin: 2px 0; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 16px 0; }
+    select, button { padding: 6px 8px; font-size: 14px; }
+    #chartWrap { background: white; border-radius: 10px; padding: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  </style>
+</head>
+<body>
+  <h1>SmartHome Dashboard</h1>
+  <div class="muted">Live data from your Ruuvi pipeline (API: <code>http://127.0.0.1:8000</code>)</div>
+
+  <div class="grid" id="cards"></div>
+
+  <div class="row">
+    <label for="sensorSelect">History sensor:</label>
+    <select id="sensorSelect"></select>
+    <label for="limitInput">Points:</label>
+    <input id="limitInput" type="number" min="10" max="2000" value="200" />
+    <button id="loadBtn">Load history</button>
+    <button id="autoBtn">Auto refresh: ON</button>
+  </div>
+
+  <div id="chartWrap">
+    <canvas id="historyChart" height="100"></canvas>
+  </div>
+
+  <script>
+    const API = "http://127.0.0.1:8000";
+    const cardsEl = document.getElementById("cards");
+    const sensorSelect = document.getElementById("sensorSelect");
+    const limitInput = document.getElementById("limitInput");
+    const loadBtn = document.getElementById("loadBtn");
+    const autoBtn = document.getElementById("autoBtn");
+
+    let autoRefresh = true;
+    let chart;
+
+    function fmtTs(ts) {
+      if (!ts) return "-";
+      return new Date(ts * 1000).toLocaleString();
+    }
+
+    function num(v, d = 2) {
+      if (v === null || v === undefined) return "-";
+      return Number(v).toFixed(d);
+    }
+
+    async function fetchJson(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+      return res.json();
+    }
+
+    async function loadLatestCards() {
+      const data = await fetchJson(`${API}/latest`);
+      const items = data.items || [];
+      cardsEl.innerHTML = "";
+
+      for (const s of items) {
+        const el = document.createElement("div");
+        el.className = "card";
+        el.innerHTML = `
+          <div class="sensor-title">${s.sensor_id}</div>
+          <div class="kv"><b>Name:</b> ${s.name || "-"}</div>
+          <div class="kv"><b>Time:</b> ${fmtTs(s.ts)}</div>
+          <div class="kv"><b>Temp:</b> ${num(s.temperature_c, 3)} °C</div>
+          <div class="kv"><b>Humidity:</b> ${num(s.humidity_pct, 3)} %</div>
+          <div class="kv"><b>Pressure:</b> ${num(s.pressure_pa, 1)} Pa</div>
+          <div class="kv"><b>Battery:</b> ${s.battery_mv ?? "-"} mV</div>
+          <div class="kv"><b>RSSI:</b> ${s.rssi ?? "-"} dBm</div>
+          <div class="kv"><b>Movement:</b> ${s.movement_counter ?? "-"}</div>
+        `;
+        cardsEl.appendChild(el);
+      }
+
+      // refresh sensor select options if needed
+      const ids = items.map(x => x.sensor_id);
+      const current = sensorSelect.value;
+      sensorSelect.innerHTML = ids.map(id => `<option value="${id}">${id}</option>`).join("");
+      if (ids.includes(current)) sensorSelect.value = current;
+    }
+
+    function ensureChart() {
+      if (chart) return chart;
+      const ctx = document.getElementById("historyChart").getContext("2d");
+      chart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: [],
+          datasets: [
+            { label: "Temperature °C", data: [], borderColor: "#e67e22", backgroundColor: "rgba(230,126,34,.15)", tension: 0.2, yAxisID: "y" },
+            { label: "Humidity %", data: [], borderColor: "#c0392b", backgroundColor: "rgba(192,57,43,.12)", tension: 0.2, yAxisID: "y1" }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { type: "linear", position: "left", title: { display: true, text: "°C" } },
+            y1: { type: "linear", position: "right", title: { display: true, text: "%" }, grid: { drawOnChartArea: false } }
+          }
+        }
+      });
+      return chart;
+    }
+
+    async function loadHistory() {
+      const sensorId = sensorSelect.value;
+      if (!sensorId) return;
+      const limit = Math.max(10, Math.min(2000, Number(limitInput.value || 200)));
+      const data = await fetchJson(`${API}/history?sensor_id=${encodeURIComponent(sensorId)}&limit=${limit}`);
+      const items = (data.items || []).slice().reverse();
+
+      const labels = items.map(x => fmtTs(x.ts));
+      const temp = items.map(x => x.temperature_c);
+      const hum = items.map(x => x.humidity_pct);
+
+      const c = ensureChart();
+      c.data.labels = labels;
+      c.data.datasets[0].data = temp;
+      c.data.datasets[1].data = hum;
+      c.update();
+    }
+
+    async function refreshAll() {
+      try {
+        await loadLatestCards();
+        await loadHistory();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    loadBtn.addEventListener("click", loadHistory);
+    autoBtn.addEventListener("click", () => {
+      autoRefresh = !autoRefresh;
+      autoBtn.textContent = `Auto refresh: ${autoRefresh ? "ON" : "OFF"}`;
+    });
+
+    refreshAll();
+    setInterval(() => { if (autoRefresh) refreshAll(); }, 5000);
+  </script>
+</body>
+</html>
