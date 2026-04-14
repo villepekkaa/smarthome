@@ -1,90 +1,87 @@
-# SmartHome (RuuviTag -> MQTT -> SQLite)
+# SmartHome (RuuviTag -> MQTT -> SQLite -> API -> Dashboard)
 
-Collect real BLE telemetry from RuuviTags, publish it to MQTT, and store it into SQLite for later analysis.
+This project collects real BLE telemetry from RuuviTags, publishes it to MQTT, stores it in SQLite, and exposes it via a FastAPI backend + browser dashboard.
 
-## Overview
+## Current architecture
 
-Pipeline:
+1. `ruuvi_collector.py`
+   - Scans BLE advertisements
+   - Parses Ruuvi RAWv2 payload
+   - Publishes JSON to MQTT topic:
+     - `home/ruuvi/<sensor_id>/telemetry`
 
-1. `ruuvi_collector.py` scans BLE advertisements and parses Ruuvi RAWv2 payloads.
-2. Collector publishes telemetry JSON to MQTT topic:
-   - `home/ruuvi/<sensor_id>/telemetry`
-3. `ruuvi_store.py` subscribes to MQTT and stores events in `telemetry.db`.
+2. `ruuvi_store.py`
+   - Subscribes to MQTT topic:
+     - `home/ruuvi/+/telemetry`
+   - Stores telemetry rows into SQLite (`telemetry.db`)
 
-This project is intentionally lightweight and local-first.
+3. `api.py`
+   - Reads telemetry from SQLite
+   - Exposes endpoints:
+     - `/health`
+     - `/sensors`
+     - `/latest`
+     - `/history`
+     - `/alerts`
+     - `/alert-summary`
+
+4. `dashboard.html`
+   - Shows latest sensor cards
+   - History chart (temp/humidity)
+   - Alert summary and active alerts
 
 ---
 
 ## Requirements
 
 - Python 3.10+ (3.11+ recommended)
-- Bluetooth adapter (BLE-capable)
-- MQTT broker (Mosquitto or equivalent)
-- Python packages:
-  - `bleak`
-  - `paho-mqtt`
-  - `python-dotenv`
+- BLE-capable Bluetooth adapter
+- MQTT broker (Mosquitto)
 
 ### OS support
-- Linux: tested (CachyOS/Arch-like)
-- Windows: supported (BLE + MQTT setup required)
-- macOS: likely works with the same Python stack
+- Linux: tested (CachyOS/Arch)
+- Windows: supported with BLE + Mosquitto setup
+- macOS: likely works with same Python dependencies
 
 ---
 
 ## Install
 
-### 1) System dependencies
-
+### Linux (CachyOS/Arch)
 ```bash
 sudo pacman -Syu bluez bluez-utils mosquitto python python-pip sqlite
 sudo systemctl enable --now bluetooth
 sudo systemctl enable --now mosquitto
 ```
 
-### 2) Python virtual environment
-
+### Python environment
 ```bash
 python -m venv .venv
-```
-
-Activate:
-
-```bash
-# fish shell
+# fish:
 source .venv/bin/activate.fish
-
-# bash/zsh (alternative)
+# bash/zsh:
 # source .venv/bin/activate
-```
-
-Install Python packages:
-
-```bash
-pip install bleak paho-mqtt python-dotenv
+pip install bleak paho-mqtt python-dotenv fastapi uvicorn
 ```
 
 ---
 
 ## Configuration
 
-Create local config file from template:
-
+Copy template:
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your local values:
-
-- `MQTT_HOST` (default: `localhost`)
-- `MQTT_PORT` (default: `1883`)
-- `MQTT_TOPIC_PREFIX` (default: `home/ruuvi`)
-- `MQTT_TOPIC` (default: `home/ruuvi/+/telemetry`)
-- `ALLOWED_MACS` (comma-separated MAC list, optional)
-- `DB_PATH` (default: `telemetry.db`)
+Edit `.env` values:
+- `MQTT_HOST`
+- `MQTT_PORT`
+- `MQTT_TOPIC_PREFIX`
+- `MQTT_TOPIC`
+- `ALLOWED_MACS` (optional, comma-separated)
+- `DB_PATH`
 
 Example:
-
 ```env
 MQTT_HOST=localhost
 MQTT_PORT=1883
@@ -94,132 +91,66 @@ ALLOWED_MACS=EA:10:CF:D3:59:AD,C7:EB:D8:F6:F0:19
 DB_PATH=telemetry.db
 ```
 
-Notes:
-- If `ALLOWED_MACS` is empty, collector accepts all detected Ruuvi tags.
-- Keep real MAC addresses only in `.env`.
-
 ---
 
 ## Run
 
-Use two terminals.
+Use separate terminals.
 
-### Terminal A: MQTT -> SQLite consumer
-
+### 1) Store service (MQTT -> SQLite)
 ```bash
 source .venv/bin/activate.fish
 python ruuvi_store.py
 ```
 
-Expected behavior:
-- Connects to MQTT broker
-- Subscribes to `home/ruuvi/+/telemetry`
-- Stores rows into `telemetry.db`
-
-### Terminal B: BLE -> MQTT collector
-
+### 2) Collector service (BLE -> MQTT)
 ```bash
 source .venv/bin/activate.fish
 python ruuvi_collector.py
 ```
 
-Expected behavior:
-- Scans BLE advertisements
-- Parses Ruuvi payloads
-- Publishes telemetry JSON to MQTT topics
+### 3) API
+```bash
+source .venv/bin/activate.fish
+python api.py
+```
+
+### 4) Dashboard
+```bash
+python -m http.server 8081
+```
+Open:
+- `http://127.0.0.1:8081/dashboard.html`
+- API docs: `http://127.0.0.1:8000/docs`
 
 ---
 
 ## Verify data
 
-Show latest rows:
-
 ```bash
-sqlite3 telemetry.db "select id,sensor_id,iso_time,temperature_c,humidity_pct,pressure_pa,battery_mv from telemetry order by id desc limit 10;"
-```
-
-Count rows:
-
-```bash
-sqlite3 telemetry.db "select count(*) from telemetry;"
-```
-
-Latest timestamp per sensor:
-
-```bash
-sqlite3 telemetry.db "select sensor_id,max(ts) as last_ts from telemetry group by sensor_id;"
+sqlite3 telemetry.db "select id,sensor_id,iso_time,temperature_c,humidity_pct,battery_mv from telemetry order by id desc limit 10;"
 ```
 
 ---
 
-## MQTT payload format (example)
-
-```json
-{
-  "sensor_id": "ruuvi_c7ebd8f6f019",
-  "mac": "C7:EB:D8:F6:F0:19",
-  "name": "Ruuvi F019",
-  "ts": 1776065479,
-  "rssi": -73,
-  "values": {
-    "temperature_c": 8.045,
-    "humidity_pct": 52.225,
-    "pressure_pa": 102804,
-    "accel_x_mg": 16,
-    "accel_y_mg": 16,
-    "accel_z_mg": 1020,
-    "battery_mv": 2907,
-    "tx_power_dbm": 4,
-    "movement_counter": 41,
-    "measurement_sequence": 44793
-  }
-}
-```
-
----
-
-## Project files
-
-- `ruuvi_collector.py` — BLE scanner + Ruuvi parser + MQTT publisher
-- `ruuvi_store.py` — MQTT subscriber + SQLite writer
-- `.env.example` — safe template config
-- `.gitignore` — excludes local data/secrets
-- `telemetry.db` — local SQLite database (generated at runtime)
-
----
-
-## Privacy and security
+## Privacy / security
 
 Do not commit:
-
 - `.env`
 - `telemetry.db`
-- logs that contain private location/device metadata
+- logs with private sensor/location metadata
 
-Recommended:
-- Keep credentials and real device MACs only in `.env`
-- Commit `.env.example` with placeholder values
+Keep real MAC addresses and any credentials only in `.env`.
 
 ---
 
-## Troubleshooting
+## Roadmap (next refactor)
 
-### Error: `await outside async function`
-Check `ruuvi_collector.py` indentation:
-- `async def main():` must exist
-- `await scanner.start()` and `await scanner.stop()` must be inside `main()`
+Current code is intentionally functional-first and monolithic. Next step is to split into modules:
 
-### No BLE data found
-```bash
-systemctl status bluetooth --no-pager
-bluetoothctl scan on
-```
+- `app/api/routes/*` (endpoint modules)
+- `app/api/services/*` (DB query + alert logic)
+- `app/web/static/js`, `app/web/static/css` (dashboard assets)
+- shared `config.py` and `db.py`
 
-### No MQTT messages
-```bash
-systemctl status mosquitto --no-pager
-mosquitto_sub -h localhost -t 'home/ruuvi/#' -v
-```
-
-### Works with `sudo` only
-If scanner works only as root, adjust local Bluetooth permissions/groups on your system.
+This keeps behavior the same but makes the project production-like and easier to maintain.
