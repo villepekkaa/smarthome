@@ -1,6 +1,7 @@
 import asyncio
 import signal
 import time
+from collections import defaultdict
 
 from bleak import BleakScanner
 
@@ -18,6 +19,10 @@ def _is_mac_allowed(mac: str) -> bool:
 
 async def main():
     stop_event = asyncio.Event()
+    stats_interval_s = 30
+    sensor_counts: dict[str, int] = defaultdict(int)
+    sensor_last_seen_ts: dict[str, int] = {}
+    last_stats_print_ts = 0
 
     def _stop(*_):
         stop_event.set()
@@ -28,6 +33,8 @@ async def main():
     mqtt_client = build_mqtt_client()
 
     def detection_callback(device, advertisement_data):
+        nonlocal last_stats_print_ts
+
         mac = (device.address or "").upper()
         if not _is_mac_allowed(mac):
             return
@@ -64,8 +71,21 @@ async def main():
             },
         }
 
-        topic = publish_telemetry(mqtt_client, msg["sensor_id"], msg)
-        print(topic, msg)
+        publish_telemetry(mqtt_client, msg["sensor_id"], msg)
+
+        sensor_id_value = msg["sensor_id"]
+        sensor_counts[sensor_id_value] += 1
+        sensor_last_seen_ts[sensor_id_value] = ts
+
+        if ts - last_stats_print_ts >= stats_interval_s:
+            last_stats_print_ts = ts
+            parts = []
+            now_ts = int(time.time())
+            for sid in sorted(sensor_last_seen_ts):
+                age_s = now_ts - sensor_last_seen_ts[sid]
+                parts.append(f"{sid}: packets={sensor_counts[sid]}, age={age_s}s")
+            if parts:
+                print("Collector stats | " + " | ".join(parts))
 
     scanner = BleakScanner(detection_callback=detection_callback)
     await scanner.start()

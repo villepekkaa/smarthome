@@ -2,7 +2,7 @@
 
 This project collects BLE telemetry from RuuviTags, publishes it to MQTT, stores it in SQLite, and serves telemetry + dashboard via FastAPI.
 
-## Refactored structure
+## Project structure
 
 ```text
 SmartHome/
