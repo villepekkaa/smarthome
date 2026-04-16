@@ -115,26 +115,6 @@ Run each service in a separate terminal with the venv activated.
 ./scripts/run_api.sh
 ```
 
-## Entry Points
-
-Services are started via module entry points (not top-level wrapper files).
-
-Preferred (via helper scripts):
-
-```bash
-./scripts/run_store.sh
-./scripts/run_collector.sh
-./scripts/run_api.sh
-```
-
-Equivalent direct commands:
-
-```bash
-python -m app.store.ruuvi_store
-python -m app.collector.ruuvi_collector
-python -m app.api.main
-```
-
 ## Verify Each Stage
 
 1. Collector receives BLE advertisements.
