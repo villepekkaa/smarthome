@@ -1,0 +1,7 @@
+bleak
+fastapi
+jinja2
+paho-mqtt
+python-dotenv
+pydantic
+uvicorn

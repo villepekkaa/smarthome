@@ -1,87 +1,81 @@
 # SmartHome (RuuviTag -> MQTT -> SQLite -> API -> Dashboard)
 
-This project collects real BLE telemetry from RuuviTags, publishes it to MQTT, stores it in SQLite, and exposes it via a FastAPI backend + browser dashboard.
+SmartHome collects BLE telemetry from RuuviTags, publishes it to MQTT, stores it in SQLite, and serves data through a FastAPI API and browser dashboard.
 
-## Current architecture
+## Quick Start
 
-1. `ruuvi_collector.py`
-   - Scans BLE advertisements
-   - Parses Ruuvi RAWv2 payload
-   - Publishes JSON to MQTT topic:
-     - `home/ruuvi/<sensor_id>/telemetry`
+1. Create and activate a virtual environment.
 
-2. `ruuvi_store.py`
-   - Subscribes to MQTT topic:
-     - `home/ruuvi/+/telemetry`
-   - Stores telemetry rows into SQLite (`telemetry.db`)
-
-3. `api.py`
-   - Reads telemetry from SQLite
-   - Exposes endpoints:
-     - `/health`
-     - `/sensors`
-     - `/latest`
-     - `/history`
-     - `/alerts`
-     - `/alert-summary`
-
-4. `dashboard.html`
-   - Shows latest sensor cards
-   - History chart (temp/humidity)
-   - Alert summary and active alerts
-
----
-
-## Requirements
-
-- Python 3.10+ (3.11+ recommended)
-- BLE-capable Bluetooth adapter
-- MQTT broker (Mosquitto)
-
-### OS support
-- Linux: tested (CachyOS/Arch)
-- Windows: supported with BLE + Mosquitto setup
-- macOS: likely works with same Python dependencies
-
----
-
-## Install
-
-### Linux (CachyOS/Arch)
-```bash
-sudo pacman -Syu bluez bluez-utils mosquitto python python-pip sqlite
-sudo systemctl enable --now bluetooth
-sudo systemctl enable --now mosquitto
-```
-
-### Python environment
 ```bash
 python -m venv .venv
-# fish:
+
+# fish
 source .venv/bin/activate.fish
-# bash/zsh:
+
+# bash/zsh
 # source .venv/bin/activate
-pip install bleak paho-mqtt python-dotenv fastapi uvicorn
 ```
 
----
+2. Install dependencies.
 
-## Configuration
+```bash
+pip install -r requirements.txt
+```
 
-Copy template:
+3. Copy environment config.
+
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` values:
-- `MQTT_HOST`
-- `MQTT_PORT`
-- `MQTT_TOPIC_PREFIX`
-- `MQTT_TOPIC`
-- `ALLOWED_MACS` (optional, comma-separated)
-- `DB_PATH`
+4. Run services in separate terminals.
 
-Example:
+```bash
+./scripts/run_store.sh
+./scripts/run_collector.sh
+./scripts/run_api.sh
+```
+
+5. Open dashboard and API docs.
+
+- Dashboard: http://127.0.0.1:8000/dashboard
+- OpenAPI docs: http://127.0.0.1:8000/docs
+
+## Data Flow
+
+```text
+RuuviTag BLE advertisements
+   -> collector (Bleak)
+   -> MQTT broker (Mosquitto)
+   -> store service
+   -> SQLite telemetry.db
+   -> FastAPI routes/services
+   -> Dashboard (/dashboard)
+```
+
+## Prerequisites
+
+- Python 3.10+
+- BLE-capable Bluetooth adapter
+- MQTT broker (Mosquitto)
+
+Linux (example):
+
+```bash
+sudo systemctl enable --now bluetooth
+sudo systemctl enable --now mosquitto
+```
+
+## Configuration
+
+Copy template:
+
+```bash
+cp .env.example .env
+```
+
+Example `.env`:
+
 ```env
 MQTT_HOST=localhost
 MQTT_PORT=1883
@@ -89,68 +83,168 @@ MQTT_TOPIC_PREFIX=home/ruuvi
 MQTT_TOPIC=home/ruuvi/+/telemetry
 ALLOWED_MACS=EA:10:CF:D3:59:AD,C7:EB:D8:F6:F0:19
 DB_PATH=telemetry.db
+API_HOST=0.0.0.0
+API_PORT=8000
 ```
 
----
+Notes:
 
-## Run
+- `ALLOWED_MACS` must be comma-separated, uppercase MACs with colons.
+- If `ALLOWED_MACS` is empty, all Ruuvi tags are accepted.
+- `DB_PATH` can be relative (project directory) or absolute.
 
-Use separate terminals.
+## Run Services
 
-### 1) Store service (MQTT -> SQLite)
+Run each service in a separate terminal with the venv activated.
+
+1. Store service (MQTT -> SQLite)
+
 ```bash
-source .venv/bin/activate.fish
-python ruuvi_store.py
+./scripts/run_store.sh
 ```
 
-### 2) Collector service (BLE -> MQTT)
+2. Collector service (BLE -> MQTT)
+
 ```bash
-source .venv/bin/activate.fish
-python ruuvi_collector.py
+./scripts/run_collector.sh
 ```
 
-### 3) API
+3. API + dashboard
+
 ```bash
-source .venv/bin/activate.fish
-python api.py
+./scripts/run_api.sh
 ```
 
-### 4) Dashboard
+## Entry Points
+
+Services are started via module entry points (not top-level wrapper files).
+
+Preferred (via helper scripts):
+
 ```bash
-python -m http.server 8081
+./scripts/run_store.sh
+./scripts/run_collector.sh
+./scripts/run_api.sh
 ```
-Open:
-- `http://127.0.0.1:8081/dashboard.html`
-- API docs: `http://127.0.0.1:8000/docs`
 
----
+Equivalent direct commands:
 
-## Verify data
+```bash
+python -m app.store.ruuvi_store
+python -m app.collector.ruuvi_collector
+python -m app.api.main
+```
+
+## Verify Each Stage
+
+1. Collector receives BLE advertisements.
+
+- Look for collector logs and periodic stats lines.
+
+2. Store receives and writes messages.
+
+- Look for `Stored:` lines in the store terminal.
+
+3. Database has telemetry rows.
 
 ```bash
 sqlite3 telemetry.db "select id,sensor_id,iso_time,temperature_c,humidity_pct,battery_mv from telemetry order by id desc limit 10;"
 ```
 
----
+4. API responds.
 
-## Privacy / security
+```bash
+curl -s http://127.0.0.1:8000/health
+curl -s "http://127.0.0.1:8000/latest"
+```
+
+## Troubleshooting
+
+### Sensor updates are infrequent (stale values)
+
+Common causes:
+
+- Weak BLE reception (low RSSI)
+- Physical distance or obstacles
+- USB/Bluetooth adapter placement
+- Host power saving affecting Bluetooth scanning
+
+How to confirm packet loss:
+
+- Compare sample counts per sensor in SQLite.
+- Check `measurement_sequence` jumps for the affected sensor.
+
+Example SQL checks:
+
+```bash
+sqlite3 telemetry.db "select sensor_id,count(*) from telemetry group by sensor_id;"
+sqlite3 telemetry.db "select sensor_id,ts,rssi,measurement_sequence from telemetry where sensor_id='ruuvi_c7ebd8f6f019' order by id desc limit 20;"
+```
+
+What to try:
+
+1. Move scanner host closer to the problematic tag.
+2. Reposition adapter for better line-of-sight.
+3. Verify tag battery/contact quality.
+4. Keep collector running continuously and monitor stats output.
+
+### Dashboard loads but no data
+
+1. Confirm store service is running.
+2. Confirm rows exist in `telemetry.db`.
+3. Confirm API endpoint `/latest` returns items.
+
+## Project Structure
+
+```text
+SmartHome/
+   app/
+      api/
+         main.py
+         routes/
+            health.py
+            sensors.py
+            telemetry.py
+            alerts.py
+         services/
+            telemetry_service.py
+            alert_service.py
+         db.py
+         schemas.py
+      collector/
+         ruuvi_collector.py
+         ruuvi_parser.py
+         mqtt_publisher.py
+      store/
+         ruuvi_store.py
+         repository.py
+      web/
+         templates/
+            index.html
+         static/
+            css/
+               dashboard.css
+            js/
+               dashboard.js
+      config.py
+   scripts/
+      run_api.sh
+      run_collector.sh
+      run_store.sh
+   tests/
+```
+
+## Development Notes
+
+- API routing is in `app/api/routes`.
+- DB query/business logic is in `app/api/services`.
+- Store writes are centralized in `app/store/repository.py`.
+- Frontend assets are under `app/web/static`.
+
+## Security and Privacy
 
 Do not commit:
+
 - `.env`
 - `telemetry.db`
-- logs with private sensor/location metadata
-
-Keep real MAC addresses and any credentials only in `.env`.
-
----
-
-## Roadmap (next refactor)
-
-Current code is intentionally functional-first and monolithic. Next step is to split into modules:
-
-- `app/api/routes/*` (endpoint modules)
-- `app/api/services/*` (DB query + alert logic)
-- `app/web/static/js`, `app/web/static/css` (dashboard assets)
-- shared `config.py` and `db.py`
-
-This keeps behavior the same but makes the project production-like and easier to maintain.
+- logs containing private location/device metadata
