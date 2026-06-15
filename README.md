@@ -1,6 +1,6 @@
 # SmartHome (RuuviTag -> MQTT -> SQLite -> API -> Dashboard)
 
-SmartHome collects BLE telemetry from RuuviTags, publishes it to MQTT, stores it in SQLite, and serves data through a FastAPI API and browser dashboard.
+SmartHome collects BLE telemetry from RuuviTags, publishes it to MQTT, stores it in SQLite, and serves data through a FastAPI API and browser dashboard. Tested and working on Linux. 
 
 ## Quick Start
 
