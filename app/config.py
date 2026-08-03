@@ -15,6 +15,7 @@ class Settings(BaseModel):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     allowed_macs: set[str] = set()
+    api_allowed_origins: list[str] = ["http://127.0.0.1:8000"]
 
 
 @lru_cache(maxsize=1)
@@ -37,6 +38,11 @@ def get_settings() -> Settings:
         api_host=os.getenv("API_HOST", "0.0.0.0"),
         api_port=int(os.getenv("API_PORT", "8000")),
         allowed_macs=allowed_macs,
+        api_allowed_origins=[
+            origin.strip()
+            for origin in os.getenv("API_ALLOWED_ORIGINS", "http://127.0.0.1:8000").split(",")
+            if origin.strip()
+        ],
     )
 
 

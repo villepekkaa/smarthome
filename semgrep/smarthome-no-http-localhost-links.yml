@@ -1,0 +1,6 @@
+rules:
+  - id: smarthome-no-http-localhost-links
+    languages: [html]
+    severity: WARNING
+    message: Avoid hardcoded plaintext localhost URLs in HTML; use relative or HTTPS links.
+    pattern-regex: '(href|src)=["'']http://(127\.0\.0\.1|localhost)(:[0-9]+)?[^"'' ]*["'']'

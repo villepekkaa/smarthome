@@ -1,0 +1,12 @@
+rules:
+  - id: smarthome-no-print-in-prod
+    languages: [python]
+    severity: WARNING
+    message: Use logging instead of print in production code.
+    paths:
+      include:
+        - /app/**/*.py
+        - /semgrep/**/*.py
+      exclude:
+        - /tests/**
+    pattern: print(...)

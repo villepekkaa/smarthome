@@ -1,4 +1,5 @@
 import json
+import logging
 
 import paho.mqtt.client as mqtt
 
@@ -7,10 +8,11 @@ from app.store.repository import init_db, insert_telemetry
 
 settings = get_settings()
 conn = init_db(settings.db_path)
+logger = logging.getLogger(__name__)
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
-    print("Connected, subscribing:", settings.mqtt_topic)
+    logger.info("Connected, subscribing: %s", settings.mqtt_topic)
     client.subscribe(settings.mqtt_topic)
 
 
@@ -19,8 +21,8 @@ def on_message(client, userdata, msg):
     insert_telemetry(conn, msg.topic, payload)
 
     values = payload.get("values", {})
-    print(
-        "Stored:",
+    logger.info(
+        "Stored: sensor_id=%s ts=%s temperature_c=%s",
         payload.get("sensor_id"),
         payload.get("ts"),
         values.get("temperature_c"),

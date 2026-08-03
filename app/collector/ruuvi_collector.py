@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import signal
 import time
 from collections import defaultdict
@@ -8,6 +9,8 @@ from bleak import BleakScanner
 from app.collector.mqtt_publisher import build_mqtt_client, publish_telemetry
 from app.collector.ruuvi_parser import RUUVI_COMPANY_ID, parse_ruuvi_rawv2
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def _is_mac_allowed(mac: str) -> bool:
@@ -85,11 +88,11 @@ async def main():
                 age_s = now_ts - sensor_last_seen_ts[sid]
                 parts.append(f"{sid}: packets={sensor_counts[sid]}, age={age_s}s")
             if parts:
-                print("Collector stats | " + " | ".join(parts))
+                logger.info("Collector stats | %s", " | ".join(parts))
 
     scanner = BleakScanner(detection_callback=detection_callback)
     await scanner.start()
-    print("Scanning RuuviTag BLE advertisements... Ctrl+C to stop")
+    logger.info("Scanning RuuviTag BLE advertisements... Ctrl+C to stop")
 
     await stop_event.wait()
 

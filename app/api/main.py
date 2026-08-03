@@ -17,10 +17,12 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 WEB_DIR = BASE_DIR / "web"
 
 app = FastAPI(title="SmartHome API", version="0.3.0")
+settings = get_settings()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_origins=settings.api_allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -58,7 +60,6 @@ def root() -> dict:
 
 
 if __name__ == "__main__":
-    settings = get_settings()
     uvicorn.run(
         "app.api.main:app",
         host=settings.api_host,
